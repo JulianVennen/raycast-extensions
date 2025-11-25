@@ -2,11 +2,9 @@ import {
   Application,
   captureException,
   environment,
-  getApplications,
   getPreferenceValues,
   Image,
   Keyboard,
-  PreferenceValues,
   showToast,
   Toast,
 } from "@raycast/api";
@@ -21,16 +19,19 @@ import { Options } from "fast-glob/out/settings";
 import Channel, { ChannelDetail, Extension, Tool } from "./.channel.json";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { execFile } from "node:child_process";
 
 export const execPromise = promisify(exec);
+export const execFilePromise = promisify(execFile);
 
 export const JetBrainsIcon = "jb.png";
 
 interface prefs {
-  bin: PreferenceValues;
-  toolsInstall: PreferenceValues;
-  fallback: PreferenceValues;
-  frecencySorting: PreferenceValues;
+  bin: string;
+  toolsInstall: Application;
+  dataDir: string;
+  fallback: boolean;
+  frecencySorting: boolean;
 }
 
 const preferences = getPreferenceValues<prefs>();
@@ -39,11 +40,11 @@ export const supportedMajorVersions = ["2", "3"];
 export const githubIssueUrl =
   "https://github.com/raycast/extensions/issues/new?body=%3C!--%0APlease%20update%20the%20title%20above%20to%20consisely%20describe%20the%20issue%0A--%3E%0A%0A%23%23%23%20Extension%0A%0Ahttps://www.raycast.com/gdsmith/jetbrains%0A%0A%23%23%23%20Description%0A%0A%3C!--%0APlease%20provide%20a%20clear%20and%20concise%20description%20of%20what%20the%20bug%20is.%20Include%0Ascreenshots%20if%20needed.%20Please%20test%20using%20the%20latest%20version%20of%20the%20extension,%20Raycast%20and%20API.%0A--%3E%0A%23%23%23%20Steps%20To%20Reproduce%0A%0A%3C!--%0AYour%20bug%20will%20get%20fixed%20much%20faster%20if%20the%20extension%20author%20can%20easily%20reproduce%20it.%20Issues%20without%20reproduction%20steps%20may%20be%20immediately%20closed%20as%20not%20actionable.%0A--%3E%0A%0A1.%20In%20this%20environment...%0A2.%20With%20this%20config...%0A3.%20Run%20%27...%27%0A4.%20See%20error...%0A%0A%23%23%23%20Current%20Behaviour%0A%0A%0A%23%23%23%20Expected%20Behaviour%0A%0A%23%23%23%20Raycast%20version%0AVersion:%201.103.3%0A&title=%5BJetBrains%20Toolbox%20Recent%20Projects%5D%20...&template=extension_bug_report.yml&labels=extension,bug&extension-url=https://www.raycast.com/gdsmith/jetbrains&description";
 
-export const bin = String(preferences["bin"]).replace("~", homedir());
-export const toolsInstall = String(preferences["toolsInstall"]).replace("~", homedir());
-export const toolsSupportDir = "~/Library/Application Support/JetBrains/Toolbox".replace("~", homedir());
-export const useUrl = Boolean(preferences["fallback"]);
-export const frecencySorting = Boolean(preferences["frecencySorting"]);
+export const bin = preferences.bin;
+export const toolsInstall = preferences.toolsInstall;
+export const toolsSupportDir = preferences.dataDir;
+export const useUrl = preferences.fallback;
+export const frecencySorting = preferences.frecencySorting;
 
 const CHANNEL_GLOB = resolve(toolsSupportDir, "channels/*.json");
 const SETTINGS_GLOB = resolve(toolsSupportDir, ".settings.json");
@@ -92,6 +93,16 @@ export interface ToolboxApp extends Application {
   isSupported: boolean;
 }
 
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+  } catch {
+    return false;
+  }
+
+  return true;
+}
+
 async function getFile(path: string) {
   const stats = await lstat(path);
   return {
@@ -104,6 +115,11 @@ async function getFile(path: string) {
 }
 
 async function getFiles(dir: string | string[], options?: Options): Promise<Array<file>> {
+  if (typeof dir === "string") {
+    dir = fg.convertPathToPattern(dir);
+  } else {
+    dir = dir.map(fg.convertPathToPattern);
+  }
   const glob = await fg(dir, options);
   return Promise.all(glob.map(getFile));
 }
@@ -167,9 +183,7 @@ export async function getRecentEntries(xmlFile: file, app: AppHistory): Promise<
             .map(async (recent: recentEntry) => {
               return {
                 ...recent,
-                exists: await stat(recent.path)
-                  .then(() => true)
-                  .catch(() => false),
+                exists: await exists(recent.path),
               } as recentEntry;
             })
         );
@@ -217,15 +231,11 @@ export const getRecent = async (path: string | string[], icon: Image.ImageLike):
 };
 
 export const getJetBrainsToolboxApp = async (): Promise<ToolboxApp | undefined> => {
-  const jb = (await getApplications()).find((app) => app.bundleId === "com.jetbrains.toolbox");
-  if (jb === undefined) {
-    return jb;
-  }
-  const version = await execPromise(`defaults read "${jb.path}/Contents/Info.plist" CFBundleShortVersionString`).then(
-    ({ stdout }) => stdout.trim(),
-  );
+  const state = JSON.parse((await readFile(toolsSupportDir + "/state.json")).toString());
+  const version = state?.appVersion;
+
   return {
-    ...jb,
+    ...toolsInstall,
     version,
     isSupported: supportedMajorVersions.some((prefix) => version === prefix || version.startsWith(prefix + ".")),
   };
@@ -250,14 +260,16 @@ const globFromChannel = async (tool: Tool, channel: ChannelDetail) => {
     const appPath = defaults.defaultConfigDirectories["idea.config.path"].replace("$HOME", homedir());
     return [`${appPath}/options/recent(Projects|Solutions).xml`];
   }
-  return directoryPatterns
-    .filter((pattern) => pattern.match("Application Support"))
-    .reduce<string[]>((previousValue, currentValue: string) => {
-      return [
-        ...previousValue,
-        ...recentProjectsFilenames.map((filename) => `${currentValue.replace("$HOME", homedir())}/*/${filename}`),
-      ];
-    }, [] as string[]);
+  return directoryPatterns.reduce<string[]>((previousValue, currentValue: string) => {
+    currentValue = currentValue
+      .replace("$LOCALAPPDATA", "$HOME/AppData/Local")
+      .replace("$APPDATA", "$HOME/AppData/Roaming")
+      .replace("$HOME", homedir());
+    return [
+      ...previousValue,
+      ...recentProjectsFilenames.map((filename) => `${currentValue.replace("$HOME", homedir())}/*/${filename}`),
+    ];
+  }, [] as string[]);
 };
 
 const shellFromChannel = (tool: Tool) => {

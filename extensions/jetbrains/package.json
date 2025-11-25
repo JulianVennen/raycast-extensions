@@ -10,7 +10,8 @@
     "dima-m711",
     "dgrzedzielski",
     "perasite",
-    "hemang_kinra"
+    "hemang_kinra",
+    "JulianVennen"
   ],
   "license": "MIT",
   "commands": [
@@ -32,21 +33,36 @@
   "preferences": [
     {
       "name": "bin",
-      "type": "textfield",
-      "required": false,
+      "type": "directory",
+      "required": true,
       "title": "Shell scripts location",
       "description": "Where are JetBrains Tools 'shell scripts' are installed (in Toolbox → Settings → Tools)",
-      "default": "/usr/local/bin",
-      "placeholder": "/usr/local/bin"
+      "default": {
+        "Windows": "~/AppData/Local/JetBrains/Toolbox/scripts",
+        "macOS": "/usr/local/bin"
+      }
+    },
+    {
+      "name": "dataDir",
+      "type": "directory",
+      "required": true,
+      "title": "Toolbox Data directory",
+      "description": "Where does the Toolbox store it's data (Parent directory of Toolbox → About → Show Log files)",
+      "default": {
+        "Windows": "~/AppData/Local/JetBrains/Toolbox",
+        "macOS": "~/Library/Application Support/JetBrains/Toolbox"
+      }
     },
     {
       "name": "toolsInstall",
-      "type": "textfield",
-      "required": false,
+      "type": "appPicker",
+      "required": true,
       "title": "Tools Install location",
       "description": "What is the JetBrains Tools install Location? (in Toolbox → Settings → Tools)",
-      "default": "/Applications/JetBrains Toolbox.app",
-      "placeholder": "/Applications/JetBrains Toolbox.app"
+      "default": {
+        "Windows": "/Applications/fb2a71ea-550c-5962-b03d-d0e4fafffbcd",
+        "macOS": "/Applications/JetBrains Toolbox.app"
+      }
     },
     {
       "name": "fallback",
@@ -110,6 +126,7 @@
     "migrate": "ray migrate"
   },
   "platforms": [
-    "macOS"
+    "macOS",
+    "Windows"
   ]
 }

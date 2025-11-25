@@ -1,5 +1,10 @@
 # Jetbrains Changelog
 
+## [Add Windows Support] - {PR_MERGE_DATE}
+
+- Added support for using this extension on Windows systems
+- Allow configuring the Toolbox Data directory
+
 ## [Bugfix] - 2025-10-20
 
 - Added support for JetBrains Toolbox version 3 and improved handling of unsupported versions.
