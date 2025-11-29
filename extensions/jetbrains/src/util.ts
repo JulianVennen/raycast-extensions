@@ -46,6 +46,9 @@ export const toolsSupportDir = preferences.dataDir;
 export const useUrl = preferences.fallback;
 export const frecencySorting = preferences.frecencySorting;
 
+export const isWin = process.platform === "win32";
+export const isMac = process.platform === "darwin";
+
 const CHANNEL_GLOB = resolve(toolsSupportDir, "channels/*.json");
 const SETTINGS_GLOB = resolve(toolsSupportDir, ".settings.json");
 
