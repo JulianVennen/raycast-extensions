@@ -425,6 +425,24 @@ export const setSort = async (sortOrder: string[]): Promise<void> => {
   });
 };
 
+type ProductInfo = {
+  name: string;
+  version: string;
+  svgIconPath: string;
+  launch: LaunchInfo[]
+}
+
+type LaunchInfo = {
+  os: string;
+  arch: string;
+  launcherPath: string;
+}
+
+async function getProductInfo(directory: string): Promise<ProductInfo> {
+  const content = await readFile(directory + "/product-info.json");
+  return JSON.parse(content.toString());
+}
+
 export const getHistory = async (): Promise<AppHistory[]> => {
   const scriptDir = (await getSettings())?.shell_scripts.location.replace("~", homedir()) ?? bin;
   return (
@@ -434,6 +452,11 @@ export const getHistory = async (): Promise<AppHistory[]> => {
         if (channel === undefined || tool === undefined) {
           return null;
         }
+
+        const info = await getProductInfo(channel.installationDirectory);
+        const launcher = resolve(channel.installationDirectory, info.launch[0].launcherPath);
+        const svg = resolve(channel.installationDirectory, info.svgIconPath);
+
         const icon = { fileIcon: channel.installationDirectory };
         const shell = shellFromChannel(tool);
         const whichTool = shell ? await which(shell, { path: scriptDir }).catch(() => false) : false;
@@ -446,8 +469,8 @@ export const getHistory = async (): Promise<AppHistory[]> => {
           url: useUrl && shell ? `jetbrains://${shell}/navigate/reference?project=` : false,
           tool: whichTool ? whichTool : false,
           toolName: shell ? shell : false,
-          app: await getFile(channel.installationDirectory),
-          icon,
+          app: await getFile(launcher),
+          icon: svg,
           xmlFiles: (await getRecent(await globFromChannel(tool, channel), icon)).sort(
             (a, b) => b.lastModifiedAt.getTime() - a.lastModifiedAt.getTime(),
           ),
